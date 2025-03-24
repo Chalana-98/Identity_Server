@@ -19,8 +19,13 @@ model User {
   verifyToken   String?   @unique
   resetToken    String?   @unique
   resetExpires  DateTime?
+  phoneNumber   String?
+  socialLogins  SocialLogin[]
   profile       Profile?
   sessions      Session[]
+  apiTokens     ApiToken[]
+  auditLogs     AuditLog[]
+  loginAttempts LoginAttempt[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -34,6 +39,10 @@ model Profile {
   avatar      String?
   phoneNumber String?
   bio         String?
+  birthDate   DateTime?
+  address     String?
+  city        String?
+  country     String?
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String    @unique
   createdAt   DateTime  @default(now())
@@ -43,19 +52,76 @@ model Profile {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  token     String   @unique
-  expires   DateTime
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  deviceInfo   String?
+  ipAddress    String?
+  lastActivity DateTime @default(now())
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@map("sessions")
 }
 
+model SocialLogin {
+  id           String   @id @default(cuid())
+  provider     String
+  providerId   String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+  accessToken  String?
+  refreshToken String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([provider, providerId])
+  @@map("social_logins")
+}
+
+model ApiToken {
+  id          String    @id @default(cuid())
+  name        String
+  token       String    @unique
+  scopes      String[]
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  lastUsed    DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("api_tokens")
+}
+
+model AuditLog {
+  id        String    @id @default(cuid())
+  action    String
+  details   Json?
+  ipAddress String?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime  @default(now())
+
+  @@map("audit_logs")
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  success   Boolean
+  ipAddress String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+
+  @@map("login_attempts")
+}
+
 enum Role {
   ADMIN
+  MODERATOR
   USER
   GUEST
 }

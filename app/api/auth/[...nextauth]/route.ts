@@ -2,7 +2,10 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import { PrismaClient } from "@prisma/client";
 import NextAuth, { type NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
+import FacebookProvider from "next-auth/providers/facebook";
 import bcrypt from "bcryptjs";
+import { addAuditLog } from "@/lib/audit";
 
 const prisma = new PrismaClient();
 
@@ -34,12 +37,31 @@ export const authOptions: NextAuthOptions = {
         );
 
         if (!isValid) {
+          // Log failed attempt
+          await prisma.loginAttempt.create({
+            data: {
+              userId: user.id,
+              success: false,
+              ipAddress: "127.0.0.1" // In production, get from request
+            }
+          });
           throw new Error("Invalid credentials");
         }
 
         if (!user.verified) {
           throw new Error("Please verify your email first");
         }
+
+        // Log successful login
+        await prisma.loginAttempt.create({
+          data: {
+            userId: user.id,
+            success: true,
+            ipAddress: "127.0.0.1" // In production, get from request
+          }
+        });
+
+        await addAuditLog(user.id, "LOGIN", { method: "credentials" });
 
         return {
           id: user.id,
@@ -48,6 +70,14 @@ export const authOptions: NextAuthOptions = {
           role: user.role
         };
       }
+    }),
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    FacebookProvider({
+      clientId: process.env.FACEBOOK_CLIENT_ID!,
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET!,
     })
   ],
   session: {
@@ -59,13 +89,14 @@ export const authOptions: NextAuthOptions = {
     verifyRequest: "/auth/verify"
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, account }) {
       if (user) {
-        return {
-          ...token,
-          username: user.username,
-          role: user.role
-        };
+        token.id = user.id;
+        token.username = user.username;
+        token.role = user.role;
+      }
+      if (account) {
+        token.provider = account.provider;
       }
       return token;
     },
@@ -74,6 +105,7 @@ export const authOptions: NextAuthOptions = {
         ...session,
         user: {
           ...session.user,
+          id: token.id,
           username: token.username,
           role: token.role
         }
